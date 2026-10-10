@@ -1,107 +1,66 @@
-# QuizPlatform · Spring Boot + Vue 3 Quiz Full-Stack
+# QuizPlatform
 
-> **Full-stack quiz platform — Spring Boot REST API serving questions from MongoDB + Vue 3 frontend in `frontend/`. Clean layered backend, repository pattern.**
->
-> 全栈题库平台：Spring Boot + MongoDB 后端 + Vue 3 前端 (`frontend/`)，仓储模式分层，BO/DTO 隔离存储层与 API 契约。
+A single-page quiz app: a Vue 3 frontend that presents a multiple-choice quiz and the small Spring Boot service that serves the question bank from MongoDB. UI text and code comments are Chinese; this document is English.
 
-[English](#english) · [中文](#中文)
+Solo project on the [Seal-Re](https://github.com/Seal-Re) account. MIT licensed. The backend module keeps its original name `vidar` (`com.seal.vidar`).
 
-![Spring Boot](https://img.shields.io/badge/Spring_Boot-2.5-6DB33F?logo=springboot)
-![MongoDB](https://img.shields.io/badge/MongoDB-5.x-47A248?logo=mongodb)
-![Java](https://img.shields.io/badge/Java-11+-ED8B00?logo=openjdk)
-![License](https://img.shields.io/badge/License-MIT-blue)
+## Backend
 
----
+9 Java files, 151 lines. Spring Boot 2.5.0 on Java 17, `spring-boot-starter-data-mongodb`, no relational database.
 
-<a id="english"></a>
-
-## Architecture
-
-```mermaid
-flowchart LR
-    Frontend["frontend/\n(Vue 3)"] -->|GET /api/questions| ApiController
-    subgraph QuizBackend["Spring Boot Backend"]
-        ApiController --> ApiService
-        ApiService --> ApiServiceImpl
-        ApiServiceImpl --> QuestionRepository
-        QuestionRepository --> MongoDB[("MongoDB\nquestions collection")]
-    end
 ```
-
-## Quickstart
-
-```bash
-# Backend
-# 1. Start MongoDB (local or Atlas)
-# 2. Configure application.properties
-mvn spring-boot:run
-
-# Frontend (Vue 3)
-cd frontend && npm install && npm run dev
+controller/ApiController.java        GET /api/questions
+service/ApiService.java              interface
+service/impl/ApiServiceImpl.java     findAll() wrapped in the response DTO
+repository/QuestionRepository.java   MongoRepository<QuestionDao, String>
+entity/dao/QuestionDao.java          the MongoDB document
+entity/dto/QuestionsDto.java         API response shape
 ```
-
-### Config (`src/main/resources/application.properties`)
-
-```properties
-spring.data.mongodb.uri=mongodb://localhost:27017/vidar
-spring.data.mongodb.database=vidar
-```
-
-## API
 
 | Method | Path | Response |
 |---|---|---|
-| `GET` | `/api/questions` | `QuestionsDto` — all questions with options + answer |
+| `GET` | `/api/questions` | `{"questionList":[{...document...}]}` — the whole `questions` collection, unpaged |
 
-## Domain Model
+`QuestionDao` is the document model (`@Document(collection = "questions")`): `ObjectId id`, `String question`, `String answer`, `List<String> options`. `repository.findAll()` is the only query used.
 
-```
-Questions (MongoDB document)
-├── question  String   question text
-├── options   List     answer choices
-└── answer    String   correct answer
-```
+`entity/bo/Questions.java` is dead code — it is imported by `ApiService` but never referenced. `QuestionsDto` wraps `List<QuestionDao>`, so the storage model and the API payload are the same class.
 
-## Technical Highlights
+Configuration (`src/main/resources/application.properties`):
 
-<details>
-<summary><b>Repository pattern with Spring Data MongoDB</b></summary>
-
-- **S**: MongoDB document queries need to be decoupled from business logic to stay testable and swappable.
-- **A**: `QuestionRepository` extends `MongoRepository<Questions, String>`. `ApiServiceImpl` calls the repository; the controller only handles HTTP concerns. BO/DTO separation (`Questions` BO → `QuestionsDto`) prevents leaking the storage model to the API contract.
-- **R**: Swapping the MongoDB collection schema only requires changing the BO; DTO and controller unchanged.
-</details>
-
-## Repo Layout
-
-```
-src/main/java/com/seal/vidar/
-├── controller/ApiController.java      GET /api/questions
-├── service/
-│   ├── ApiService.java               interface
-│   └── impl/ApiServiceImpl.java      MongoDB query logic
-├── entity/
-│   ├── bo/Questions.java             MongoDB document model
-│   └── dto/QuestionsDto.java         API response shape
-└── repository/QuestionRepository.java MongoRepository
+```properties
+server.port=4399
+spring.data.mongodb.host=<mongo-host>
+spring.data.mongodb.port=27017
+spring.data.mongodb.database=vidar
 ```
 
-## Roadmap
+## Frontend (`frontend/`)
 
-- [x] `GET /api/questions` — full question bank
-- [ ] Question pagination and category filter
-- [ ] `POST /api/questions` — admin question upload
-- [ ] Score submission and leaderboard endpoints
+Vue 3.5 + Vite 6 + Element Plus 2.9 + Pinia 3 (`pinia-plugin-persistedstate`) + Vue Router 4 + axios. One route, `/` → `views/Vidar/AppIndex.vue`:
 
----
+- On mount, if the persisted Pinia store is empty it calls `GET /api/questions`; otherwise it reuses the stored question list.
+- Quiz UI: question card with radio options, a numbered question grid (answered/current states), previous/next buttons, submit on the last question, then a score screen with a per-question review toggle.
+- Answers are held in component state plus the `question_train` Pinia store (localStorage-persisted). Nothing is sent back to the server.
 
-<a id="中文"></a>
+Notes on the current state: the fetched list is filtered with `q.model === '0'`, but the backend document has no `model` field, so the filter keeps everything; the "return home" button pushes `/home`, a route that does not exist; and the nine Pinia modules under `src/store/modules/` (`user`, `patient`, `container`, `tabs`, `breadcrumb`, `collapse`, `loading`, `questions`, `questions_train`) are only partly wired up — the view imports `questions_train`, the rest are scaffolding carried over from another application, as are the unused dependencies `echarts`, `vanta`, `three`, `sortablejs`, `vue3-markdown-it`, `lucide-react`, `date-fns` and a Tailwind configuration whose `content` globs match no files.
 
-## 中文速读
+## Getting started
 
-- **是什么**：QuizFrontend 的后端题库 API，Spring Boot + MongoDB，`GET /api/questions` 返回全量题目（题干、选项、答案）。
-- **亮点**：BO/DTO 分离隔离存储层与 API 契约，`MongoRepository` 仓储模式使数据层可替换。
-- **运行**：配置 `application.properties` 中 MongoDB URI → `mvn spring-boot:run`。
+```bash
+# backend — set the MongoDB coordinates in application.properties first
+mvn spring-boot:run              # port 4399
+
+# frontend
+cd frontend && npm install && npm run dev
+```
+
+The frontend has no dev proxy configured, so during development it expects the API on the same origin (or a proxy/reverse proxy of your own) and a `questions` collection available in MongoDB. `src/main/resources/static/index.html` is a leftover placeholder page.
+
+## Limitations
+
+- One endpoint, read-only: there is no way to add questions, submit a score or store results.
+- No pagination, category or filtering; the whole collection is returned.
+- No tests of substance (the single generated `VidarApplicationTests` file) and no build or deploy configuration (no Dockerfile, no CI).
 
 ## License
 
